@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Movie & Series Finder</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #141414;
+      color: white;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      width: 90%;
+      max-width: 1200px;
+      margin: 50px auto;
+      text-align: center;
+    }
+    input, button {
+      padding: 12px;
+      font-size: 16px;
+      border-radius: 5px;
+      border: none;
+    }
+    input {
+      width: 70%;
+    }
+    button {
+      background-color: #ff5722;
+      color: white;
+      cursor: pointer;
+    }
+    .movie-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 15px;
+      padding: 20px 0;
+    }
+    .movie {
+      background: #222;
+      border-radius: 10px;
+      overflow: hidden;
+      transition: transform 0.3s ease;
+      cursor: pointer;
+      position: relative;
+    }
+    .movie:hover {
+      transform: scale(1.08);
+    }
+    .movie img {
+      width: 100%;
+      height: 225px;
+      object-fit: cover;
+      display: block;
+    }
+    .overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 10px;
+      color: white;
+      font-size: 0.9em;
+      text-align: left;
+      display: none;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    .movie:hover .overlay {
+      display: block;
+    }
+    .hero {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.9);
+      justify-content: center;
+      align-items: center;
+      transition: all 0.5s ease-in-out;
+    }
+    .hero iframe {
+      width: 80%;
+      height: 80vh;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Movie & Series Finder</h1>
+    <input type="text" id="search-input" placeholder="Search for a movie, series, or anime..." onkeypress="if(event.key === 'Enter') searchMovies()">
+    <button type="button" onclick="searchMovies()">Search</button>
+    
+    <h2>Trending Movies</h2>
+    <div id="trending" class="movie-grid"></div>
+    
+    <h2>Suggestions</h2>
+    <div id="suggestions" class="movie-grid"></div>
+  </div>
+
+  <div class="hero" id="hero" onclick="closeHero()">
+    <iframe id="hero-video" frameborder="0" allowfullscreen></iframe>
+  </div>
+
+  <script>
+    const TMDB_KEY = "90eb9eb2d9ab2334eb82ec41b314e5f0";  // Your TMDB API Key
+    const OMDB_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI5MGViOWViMmQ5YWIyMzM0ZWI4MmVjNDFiMzE0ZTVmMCIsIm5iZiI6MTc0MDM5MDcyOS4zOTIsInN1YiI6IjY3YmM0MTQ5ZTVmZDE4ZjdiNjQ2NDdiMiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.5779bIR6MLeBMJwqOgvuyrYefD5fDZmKqXQncmZ0zl4";  
+
+    const genreMap = {};
+
+    async function fetchGenres() {
+      try {
+        const response = await fetch(`https://api.themoviedb.org/3/genre/movie/list?api_key=${TMDB_KEY}`);
+        const data = await response.json();
+        data.genres.forEach(genre => {
+          genreMap[genre.id] = genre.name;
+        });
+      } catch (error) {
+        console.error("Error fetching genres:", error);
+      }
+    }
+
+    async function fetchMovies(url, containerId) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '<div class="skeleton"></div>'.repeat(20);
+
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        container.innerHTML = '';
+        displayMovies(data.results, containerId);
+      } catch (error) {
+        console.error("Error fetching movies:", error);
+        container.innerHTML = "<p>Failed to load movies. Please try again later.</p>";
+      }
+    }
+
+    function searchMovies() {
+      const query = document.getElementById('search-input').value.trim();
+      if (!query) return;
+      fetchMovies(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_KEY}&query=${encodeURIComponent(query)}`, 'trending');
+    }
+
+    function fetchTrendingMovies() {
+      fetchMovies(`https://api.themoviedb.org/3/trending/all/week?api_key=${TMDB_KEY}`, 'trending');
+    }
+
+    function fetchSuggestions() {
+      fetchMovies(`https://api.themoviedb.org/3/movie/top_rated?api_key=${TMDB_KEY}`, 'suggestions');
+    }
+
+    async function fetchStreamingLinks(movieTitle) {
+      try {
+        const response = await fetch(`https://www.omdbapi.com/?t=${encodeURIComponent(movieTitle)}&apikey=${OMDB_KEY}`);
+        const data = await response.json();
+        return data.Website || "https://www.justwatch.com";
+      } catch (error) {
+        console.error("Error fetching streaming links:", error);
+        return "https://www.justwatch.com";
+      }
+    }
+
+    async function fetchMovieDetails(movieId) {
+      try {
+        const response = await fetch(`https://api.themoviedb.org/3/movie/${movieId}?api_key=${TMDB_KEY}`);
+        const data = await response.json();
+        return data.runtime ? `${data.runtime} min` : "Unknown duration";
+      } catch (error) {
+        console.error("Error fetching movie details:", error);
+        return "Unknown duration";
+      }
+    }
+
+    async function displayMovies(movies, containerId) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+
+      for (const movie of movies.slice(0, 20)) {
+        if (!movie.poster_path) continue;
+
+        const genreNames = movie.genre_ids
+          .map(id => genreMap[id])
+          .filter(Boolean)
+          .join(', ') || "Not Available";
+        
+        const streamingLink = await fetchStreamingLinks(movie.title || movie.name);
+        const duration = await fetchMovieDetails(movie.id);
+
+        const movieDiv = document.createElement('div');
+        movieDiv.classList.add('movie');
+        movieDiv.innerHTML = `
+          <img src="https://image.tmdb.org/t/p/w500${movie.poster_path}" alt="${movie.title}" onclick="showTrailer(${movie.id})">
+          <div class="overlay" onclick="showTrailer(${movie.id})">
+            <p>⭐ IMDb: ${movie.vote_average.toFixed(1)}</p>
+            <p>Genre: ${genreNames}</p>
+            <p>Duration: ${duration}</p>
+            <p>${movie.overview}</p>
+            <p><a href="${streamingLink}" target="_blank" style="color: orange;" onclick="event.stopPropagation();">Watch Online</a></p>
+          </div>
+        `;
+        container.appendChild(movieDiv);
+      }
+    }
+
+    async function showTrailer(movieId) {
+      try {
+        const response = await fetch(`https://api.themoviedb.org/3/movie/${movieId}/videos?api_key=${TMDB_KEY}`);
+        const data = await response.json();
+        const trailer = data.results.find(video => video.type === "Trailer" && video.site === "YouTube");
+
+        if (trailer) {
+          document.getElementById('hero').style.display = 'flex';
+          document.getElementById('hero-video').src = `https://www.youtube.com/embed/${trailer.key}?autoplay=1`;
+        } else {
+          alert("Trailer not available");
+        }
+      } catch (error) {
+        console.error("Error fetching trailer:", error);
+        alert("Failed to load trailer.");
+      }
+    }
+
+    function closeHero() {
+      document.getElementById('hero').style.display = 'none';
+      document.getElementById('hero-video').src = '';
+    }
+
+    fetchGenres();
+    fetchTrendingMovies();
+    fetchSuggestions();
+  </script>
+</body>
+</html>
